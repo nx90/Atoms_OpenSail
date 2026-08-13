@@ -6,17 +6,13 @@ import { setupApi } from '../lib/api';
 import { ServiceConfigForm } from '../components/ServiceConfigForm';
 import { ModelSelector } from '../components/chat/ModelSelector';
 import type { TesslateConfig } from '../types/tesslateConfig';
+import { createDefaultAppConfig } from '../utils/tesslateConfigDefaults';
 
 type Tab = 'agent' | 'manual';
 
 const DEFAULT_CONFIG: TesslateConfig = {
   apps: {
-    app: {
-      directory: '.',
-      port: 3000,
-      start: '',
-      env: {},
-    },
+    app: createDefaultAppConfig(),
   },
   infrastructure: {},
   primaryApp: 'app',

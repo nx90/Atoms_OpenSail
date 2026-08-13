@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Trash, CaretDown, CaretUp } from '@phosphor-icons/react';
 import type { TesslateConfig, AppConfig } from '../types/tesslateConfig';
+import { createDefaultAppConfig } from '../utils/tesslateConfigDefaults';
 
 interface ServiceConfigFormProps {
   config: TesslateConfig;
@@ -66,7 +67,7 @@ export function ServiceConfigForm({ config, onChange, readOnly = false }: Servic
     const updated = { ...config };
     updated.apps = {
       ...updated.apps,
-      [name]: { directory: '.', port: 3000, start: '', env: {} },
+      [name]: createDefaultAppConfig(),
     };
     if (!updated.primaryApp) updated.primaryApp = name;
     onChange(updated);
