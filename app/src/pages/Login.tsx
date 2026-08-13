@@ -3,7 +3,6 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { authApi, revokeServerSession } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { PulsingGridSpinner } from '../components/PulsingGridSpinner';
-import { MiniAsteroids } from '../components/MiniAsteroids';
 import { TesslateLogo } from '../components/ui/TesslateLogo';
 import { useTheme } from '../theme/ThemeContext';
 import { useFeatureFlag } from '../contexts/useFeatureFlag';
@@ -308,9 +307,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left side - White form section */}
-      <div className="w-full lg:w-1/2 bg-white flex items-center justify-center p-6 sm:p-12">
+    <div className="min-h-screen bg-white flex items-center justify-center p-6 sm:p-12">
+      <main className="w-full max-w-md">
         <div className="w-full max-w-md">
           {/* Logo */}
           <div className="mb-8">
@@ -665,67 +663,7 @@ export default function Login() {
             </>
           )}
         </div>
-      </div>
-
-      {/* Right side - Dark hero section */}
-      <div
-        className="hidden lg:flex lg:w-1/2 items-center justify-center p-12 relative overflow-hidden"
-        style={{
-          background: 'linear-gradient(180deg, #0a0a0f 0%, #1a1a2e 50%, #16213e 100%)',
-        }}
-      >
-        {/* Starry background effect */}
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `
-            radial-gradient(2px 2px at 20% 30%, white, transparent),
-            radial-gradient(2px 2px at 60% 70%, white, transparent),
-            radial-gradient(1px 1px at 50% 50%, white, transparent),
-            radial-gradient(1px 1px at 80% 10%, white, transparent),
-            radial-gradient(2px 2px at 90% 60%, white, transparent),
-            radial-gradient(1px 1px at 33% 80%, white, transparent),
-            radial-gradient(1px 1px at 70% 40%, white, transparent)
-          `,
-            backgroundSize: '200% 200%',
-            backgroundPosition: '0% 0%, 100% 100%, 50% 50%, 0% 100%, 100% 0%, 33% 100%, 70% 40%',
-            opacity: 0.5,
-          }}
-        ></div>
-
-        {/* Shooting star effect */}
-        <div
-          className="absolute top-20 right-40 w-32 h-0.5 bg-gradient-to-r from-transparent via-white to-transparent opacity-70"
-          style={{
-            transform: 'rotate(-45deg)',
-            animation: 'shooting-star 3s ease-in-out infinite',
-          }}
-        ></div>
-
-        <div className="relative z-10 max-w-lg text-center">
-          {/* Mini Asteroids Game */}
-          <div className="relative w-full h-80 sm:h-96">
-            <MiniAsteroids />
-          </div>
-        </div>
-
-        {/* CSS for shooting star animation */}
-        <style>{`
-          @keyframes shooting-star {
-            0% {
-              opacity: 0;
-              transform: translateX(-100px) translateY(100px) rotate(-45deg);
-            }
-            50% {
-              opacity: 0.7;
-            }
-            100% {
-              opacity: 0;
-              transform: translateX(300px) translateY(-300px) rotate(-45deg);
-            }
-          }
-        `}</style>
-      </div>
+      </main>
     </div>
   );
 }

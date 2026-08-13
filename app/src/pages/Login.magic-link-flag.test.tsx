@@ -32,7 +32,6 @@ vi.mock('../theme/ThemeContext', () => ({
 vi.mock('../components/PulsingGridSpinner', () => ({
   PulsingGridSpinner: () => null,
 }));
-vi.mock('../components/MiniAsteroids', () => ({ MiniAsteroids: () => null }));
 vi.mock('../components/ui/TesslateLogo', () => ({ TesslateLogo: () => null }));
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
