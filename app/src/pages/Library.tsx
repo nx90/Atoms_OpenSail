@@ -24,7 +24,7 @@ import type { LibraryAgent } from './library/types';
 import { LoadingSpinner } from '../components/PulsingGridSpinner';
 import { MobileMenu } from '../components/ui';
 import { type CustomProvider } from '../components/settings/CustomProviderComponents';
-import { marketplaceApi, secretsApi, billingApi } from '../lib/api';
+import { marketplaceApi, personalSkillsApi, secretsApi, billingApi } from '../lib/api';
 import toast from 'react-hot-toast';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -276,8 +276,28 @@ export default function Library() {
 
   const loadSkills = async () => {
     try {
-      const data = await marketplaceApi.getAllSkills({ limit: 100 });
-      setSkills((data.skills || []).filter((s: Record<string, unknown>) => s.is_purchased));
+      const [marketplaceData, personal] = await Promise.all([
+        marketplaceApi.getAllSkills({ limit: 100 }),
+        personalSkillsApi.list(),
+      ]);
+      const purchased = (marketplaceData.skills || [])
+        .filter((skill: Record<string, unknown>) => skill.is_purchased)
+        .map((skill: Record<string, unknown>) => ({ ...skill, source: 'marketplace' }));
+      const authored = personal.map((skill) => ({
+        ...skill,
+        slug: '',
+        category: 'personal',
+        icon: '',
+        pricing_type: 'private',
+        price: 0,
+        downloads: 0,
+        rating: 0,
+        tags: ['personal'],
+        is_purchased: true,
+        source_type: 'personal',
+        source: 'personal' as const,
+      }));
+      setSkills([...purchased, ...authored] as LibrarySkill[]);
     } catch (err) {
       console.error('Failed to load skills:', err);
       toast.error('Failed to load skills');
@@ -517,6 +537,7 @@ export default function Library() {
             agents={agents}
             loading={loading}
             onBrowse={() => navigate('/marketplace/browse/skill')}
+            onReload={loadSkills}
           />
         )}
 

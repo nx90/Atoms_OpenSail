@@ -33,6 +33,7 @@ async def load_skill_executor(params: dict[str, Any], context: dict[str, Any]) -
         Dict with skill instructions
     """
     skill_name = params.get("skill_name")
+    reference_path = params.get("reference_path")
 
     if not skill_name:
         raise ValueError("skill_name parameter is required")
@@ -45,25 +46,32 @@ async def load_skill_executor(params: dict[str, Any], context: dict[str, Any]) -
             suggestion="Skills must be installed on the agent or present in the project's .agents/skills/ directory",
         )
 
-    # Find matching skill (case-insensitive)
-    skill = None
-    for s in available_skills:
-        if s.name.lower() == skill_name.lower():
-            skill = s
-            break
-
-    if not skill:
+    matches = [s for s in available_skills if s.name.lower() == skill_name.lower()]
+    if not matches:
         available_names = [s.name for s in available_skills]
         return error_output(
             message=f"Skill '{skill_name}' not found in available skills",
             suggestion=f"Available skills: {', '.join(available_names)}",
         )
+    if len(matches) > 1:
+        sources = ", ".join(sorted({s.source for s in matches}))
+        return error_output(
+            message=f"Skill name '{skill_name}' is ambiguous",
+            suggestion=f"Rename one of the matching skills. Sources: {sources}",
+        )
+    skill = matches[0]
 
     try:
         if skill.source in ("db", "builtin"):
             body = await _fetch_skill_body_from_db(skill.skill_id, context)
+            references = []
+        elif skill.source == "personal":
+            body, references = await _fetch_personal_skill_content(
+                skill.personal_skill_id, reference_path, context
+            )
         elif skill.source == "file":
             body = await _read_skill_from_container(skill.file_path, context)
+            references = []
         else:
             return error_output(message=f"Unknown skill source: {skill.source}")
 
@@ -84,10 +92,19 @@ async def load_skill_executor(params: dict[str, Any], context: dict[str, Any]) -
             body = get_rendered_body(cache_key, body)
 
         result = {
-            "message": f"Loaded skill '{skill_name}'",
+            "message": (
+                f"Loaded reference '{reference_path}' from skill '{skill_name}'"
+                if reference_path
+                else f"Loaded skill '{skill_name}'"
+            ),
             "skill_name": skill_name,
             "instructions": body,
         }
+
+        if references:
+            result["references"] = references
+        if reference_path:
+            result["reference_path"] = reference_path
 
         if skill.file_path:
             import os
@@ -122,6 +139,57 @@ async def _fetch_skill_body_from_db(skill_id, context: dict) -> str | None:
     )
     row = result.scalar_one_or_none()
     return row
+
+
+async def _fetch_personal_skill_content(
+    skill_id, reference_path: str | None, context: dict
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Load one authorized personal skill file plus a root reference manifest."""
+    db = context.get("db")
+    user_id = context.get("user_id")
+    agent_id = context.get("agent_id")
+    if not db or not user_id or not agent_id or not skill_id:
+        return None, []
+
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from ....models import PersonalSkillAssignment
+    from ....services.personal_skills import (
+        PersonalSkillService,
+        ROOT_SKILL_FILE,
+        strip_skill_frontmatter,
+    )
+
+    user_uuid = user_id if isinstance(user_id, UUID) else UUID(str(user_id))
+    agent_uuid = agent_id if isinstance(agent_id, UUID) else UUID(str(agent_id))
+    assignment = await db.scalar(
+        select(PersonalSkillAssignment.id).where(
+            PersonalSkillAssignment.skill_id == skill_id,
+            PersonalSkillAssignment.user_id == user_uuid,
+            PersonalSkillAssignment.agent_id == agent_uuid,
+            PersonalSkillAssignment.enabled.is_(True),
+        )
+    )
+    if assignment is None:
+        return None, []
+
+    service = PersonalSkillService(db, user_uuid)
+    path = reference_path or ROOT_SKILL_FILE
+    _, entry = await service.read_file(skill_id, path)
+    references: list[dict[str, Any]] = []
+    if reference_path is None:
+        _, entries = await service.list_entries(skill_id)
+        references = [
+            {"path": item.path, "size_bytes": item.size_bytes}
+            for item in entries
+            if not item.is_directory and item.path != ROOT_SKILL_FILE
+        ]
+    content = entry.content
+    if reference_path is None and content is not None:
+        content = strip_skill_frontmatter(content)
+    return content, references
 
 
 async def _read_skill_from_container(file_path: str, context: dict) -> str | None:
@@ -186,6 +254,10 @@ def register_skill_tools(registry):
                     "skill_name": {
                         "type": "string",
                         "description": "Name of the skill from the available skills catalog",
+                    },
+                    "reference_path": {
+                        "type": "string",
+                        "description": "Optional nested text file to load after reading the root skill instructions",
                     },
                 },
                 "required": ["skill_name"],

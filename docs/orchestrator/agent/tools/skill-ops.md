@@ -6,7 +6,7 @@ The skill operations tools implement progressive disclosure for the agent skills
 
 | Tool | Purpose | Parameters |
 |------|---------|------------|
-| `load_skill` | Load full skill instructions on-demand | skill_name |
+| `load_skill` | Load full skill instructions or one nested personal-skill reference on-demand | skill_name, reference_path? |
 
 ## load_skill
 
@@ -85,6 +85,7 @@ When the agent determines a task matches a skill, it calls `load_skill` to fetch
 
 - **DB skills**: Queries `MarketplaceAgent.skill_body` column
 - **File skills**: Reads full SKILL.md from container, strips YAML frontmatter
+- **Personal skills**: Reads root `SKILL.md` from PostgreSQL and returns only a reference manifest; `reference_path` loads one nested text file after ownership and assignment checks
 
 ### Why Progressive Disclosure?
 

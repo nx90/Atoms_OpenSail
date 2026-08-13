@@ -27,19 +27,21 @@ import {
   Star,
   DownloadSimple,
   Info,
+  UserCircle,
 } from '@phosphor-icons/react';
 import { LoadingSpinner } from '../../components/PulsingGridSpinner';
-import { marketplaceApi } from '../../lib/api';
+import { marketplaceApi, personalSkillsApi, type PersonalSkillSummary } from '../../lib/api';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { Badge, staggerContainer, staggerItem } from '../../components/cards';
 import type { LibraryAgent } from './types';
+import PersonalSkillEditor from './PersonalSkillEditor';
 
 // ─── LibrarySkill interface ─────────────────────────────────────────
 export interface LibrarySkill {
   id: string;
   name: string;
-  slug: string;
+  slug?: string;
   description: string;
   category: string;
   icon: string;
@@ -52,6 +54,10 @@ export interface LibrarySkill {
   source_type?: string;
   git_repo_url?: string;
   features?: string[];
+  source?: 'marketplace' | 'personal';
+  revision?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 // Extended detail from API
@@ -103,7 +109,7 @@ void SKILL_CATEGORY_ICONS;
 // ─── Sort config ────────────────────────────────────────────────────
 type SortField = 'name' | 'category' | 'downloads';
 type SortDir = 'asc' | 'desc';
-type FilterTab = 'all' | 'open' | 'free';
+type FilterTab = 'all' | 'personal' | 'open' | 'free';
 type ViewMode = 'cards' | 'list';
 
 const sortLabels: Record<SortField, string> = {
@@ -118,11 +124,13 @@ export default function SkillsPage({
   agents,
   loading,
   onBrowse,
+  onReload,
 }: {
   skills: LibrarySkill[];
   agents: LibraryAgent[];
   loading: boolean;
   onBrowse: () => void;
+  onReload: () => Promise<void>;
 }) {
   const [filterTab, setFilterTab] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -132,6 +140,10 @@ export default function SkillsPage({
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<LibrarySkill | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createDescription, setCreateDescription] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
@@ -156,6 +168,7 @@ export default function SkillsPage({
     .filter((s) => {
       if (filterTab === 'open' && s.source_type !== 'open') return false;
       if (filterTab === 'free' && s.pricing_type !== 'free') return false;
+      if (filterTab === 'personal' && s.source !== 'personal') return false;
       return true;
     })
     .filter((s) => {
@@ -177,12 +190,74 @@ export default function SkillsPage({
 
   const openSourceCount = skills.filter((s) => s.source_type === 'open').length;
   const freeCount = skills.filter((s) => s.pricing_type === 'free').length;
+  const personalCount = skills.filter((s) => s.source === 'personal').length;
 
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <LoadingSpinner />
       </div>
+    );
+  }
+
+  const personalSummary = (value: LibrarySkill): PersonalSkillSummary => ({
+    id: value.id,
+    name: value.name,
+    description: value.description,
+    revision: value.revision || 1,
+    created_at: value.created_at || null,
+    updated_at: value.updated_at || null,
+    source: 'personal',
+  });
+
+  const handleCreate = async () => {
+    if (!createName.trim()) return;
+    setCreating(true);
+    try {
+      const created = await personalSkillsApi.create(createName, createDescription);
+      setSelectedSkill({
+        ...created,
+        slug: '',
+        category: 'personal',
+        icon: '',
+        pricing_type: 'private',
+        price: 0,
+        downloads: 0,
+        rating: 0,
+        tags: ['personal'],
+        is_purchased: true,
+        source_type: 'personal',
+        source: 'personal',
+      });
+      setShowCreate(false);
+      setCreateName('');
+      setCreateDescription('');
+      await onReload();
+      toast.success('Personal skill created');
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { detail?: string } } };
+      toast.error(apiError.response?.data?.detail || 'Failed to create skill');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (selectedSkill?.source === 'personal') {
+    return (
+      <PersonalSkillEditor
+        skill={personalSummary(selectedSkill)}
+        onClose={() => setSelectedSkill(null)}
+        onChanged={(updated) =>
+          {
+            setSelectedSkill((current) => (current ? { ...current, ...updated } : current));
+            void onReload();
+          }
+        }
+        onDeleted={async () => {
+          setSelectedSkill(null);
+          await onReload();
+        }}
+      />
     );
   }
 
@@ -196,6 +271,9 @@ export default function SkillsPage({
           </button>
           <button onClick={() => setFilterTab('open')} className={`btn ${filterTab === 'open' ? 'btn-tab-active' : 'btn-tab'} shrink-0`}>
             Open Source <span className="text-[10px] opacity-50 ml-0.5">{openSourceCount}</span>
+          </button>
+          <button onClick={() => setFilterTab('personal')} className={`btn ${filterTab === 'personal' ? 'btn-tab-active' : 'btn-tab'} shrink-0`}>
+            Personal <span className="text-[10px] opacity-50 ml-0.5">{personalCount}</span>
           </button>
           <button onClick={() => setFilterTab('free')} className={`btn ${filterTab === 'free' ? 'btn-tab-active' : 'btn-tab'} shrink-0`}>
             Free <span className="text-[10px] opacity-50 ml-0.5">{freeCount}</span>
@@ -266,6 +344,10 @@ export default function SkillsPage({
             <Storefront size={16} />
             <span className="hidden sm:inline">Browse</span>
           </button>
+          <button onClick={() => setShowCreate(true)} className="btn btn-filled">
+            <Plus size={16} />
+            <span className="hidden sm:inline">Create</span>
+          </button>
         </div>
       </div>
 
@@ -286,6 +368,9 @@ export default function SkillsPage({
                 <button onClick={onBrowse} className="btn btn-filled flex items-center gap-2">
                   <Plus size={16} />
                   Browse Skills Marketplace
+                </button>
+                <button onClick={() => setShowCreate(true)} className="btn mt-2 flex items-center gap-2">
+                  <Plus size={16} /> Create personal skill
                 </button>
               </div>
             ) : filtered.length === 0 ? (
@@ -341,6 +426,28 @@ export default function SkillsPage({
           </div>
         )}
       </div>
+
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md bg-[var(--surface)] border border-[var(--border)] p-4 shadow-xl">
+            <div className="flex items-center gap-2 mb-4">
+              <UserCircle size={20} className="text-[var(--primary)]" />
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--text)]">Create personal skill</h3>
+                <p className="text-[11px] text-[var(--text-muted)]">A private SKILL.md workspace only you can bind to agents.</p>
+              </div>
+            </div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Name</label>
+            <input value={createName} onChange={(event) => setCreateName(event.target.value)} className="w-full mb-3 px-3 py-2 bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]" autoFocus />
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Description</label>
+            <textarea value={createDescription} onChange={(event) => setCreateDescription(event.target.value)} rows={3} className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] outline-none focus:border-[var(--primary)] resize-none" />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="btn" onClick={() => setShowCreate(false)}>Cancel</button>
+              <button type="button" className="btn btn-filled" disabled={creating || !createName.trim()} onClick={handleCreate}>{creating ? 'Creating…' : 'Create skill'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -369,7 +476,7 @@ function SkillDetailPanel({
   useEffect(() => {
     setDetailLoading(true);
     marketplaceApi
-      .getSkillDetails(skill.slug)
+      .getSkillDetails(skill.slug || '')
       .then((data) => setDetail(data as SkillDetail))
       .catch(() => {
         // Fall back to basic skill data
@@ -673,7 +780,9 @@ function SkillListRow({
           <Badge intent="success">Free</Badge>
         )}
       </div>
-      <div ref={dropdownRef} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+      {skill.source === 'personal' ? (
+        <span className="text-[10px] text-[var(--text-subtle)]">Edit</span>
+      ) : <div ref={dropdownRef} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={() => setShowDropdown(!showDropdown)}
           disabled={installing}
@@ -715,7 +824,7 @@ function SkillListRow({
             )}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -826,7 +935,18 @@ function SkillCard({
 
       <div className="flex-1" />
 
-      <div ref={dropdownRef} className="relative mt-1" onClick={(e) => e.stopPropagation()}>
+      {skill.source === 'personal' ? (
+        <button
+          type="button"
+          className="btn w-full flex items-center justify-center gap-1.5"
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect();
+          }}
+        >
+          <Code size={14} /> Edit skill
+        </button>
+      ) : <div ref={dropdownRef} className="relative mt-1" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={() => setShowDropdown(!showDropdown)}
           disabled={installing}
@@ -870,7 +990,7 @@ function SkillCard({
             )}
           </div>
         )}
-      </div>
+      </div>}
     </motion.div>
   );
 }

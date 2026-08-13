@@ -288,7 +288,12 @@ def _build_submodule_registry(in_tree_registry, approval_handler=None):
 
 
 async def _create_agent_runner(
-    agent_model, model_adapter, tools_override, settings, approval_handler=None
+    agent_model,
+    model_adapter,
+    tools_override,
+    settings,
+    approval_handler=None,
+    agent_overrides=None,
 ):
     """Return an object with a ``.run(message, context)`` async-generator method.
 
@@ -311,7 +316,11 @@ async def _create_agent_runner(
 
     # Build compaction model adapter from agent config.
     compaction_adapter = None
-    agent_config = getattr(agent_model, "config", None) or {}
+    agent_overrides = agent_overrides or {}
+    agent_config = {
+        **(getattr(agent_model, "config", None) or {}),
+        **(agent_overrides.get("config") or {}),
+    }
     compaction_model_name = (
         agent_config.get("compaction_model", "") or settings.compaction_summary_model
     )
@@ -328,7 +337,7 @@ async def _create_agent_runner(
             logger.warning("[WORKER] Compaction adapter failed (non-fatal): %s", ca_err)
 
     adapter = TesslateAgentAdapter(
-        system_prompt=agent_model.system_prompt,
+        system_prompt=agent_overrides.get("system_prompt") or agent_model.system_prompt,
         tools=sub_registry,
         model=model_adapter,
         compaction_adapter=compaction_adapter,
@@ -824,24 +833,27 @@ async def execute_agent_task(ctx: dict, payload_dict: dict):
                     )
                 await db.commit()
 
-            # 4. Get model name
+            # 4. Get model name and per-user System Default Agent overrides.
+            user_id = UUID(payload.user_id)
+            override_scope = (
+                UserPurchasedAgent.team_id == UUID(payload.team_id)
+                if payload.team_id
+                else UserPurchasedAgent.user_id == user_id
+            )
+            result = await db.execute(
+                select(UserPurchasedAgent)
+                .where(override_scope, UserPurchasedAgent.agent_id == agent_model.id)
+                .limit(1)
+            )
+            user_purchase = result.scalars().first()
+            agent_overrides = user_purchase.agent_overrides if user_purchase else None
             model_name = payload.model_name
             if not model_name:
-                user_id = UUID(payload.user_id)
                 # ``.first()`` (not ``scalar_one_or_none``) — a user can
                 # legitimately have one row per team for the same agent,
                 # and any one of them carries the same ``selected_model``
                 # we care about here. Crashing on duplicates would block
                 # all delegated agent runs.
-                result = await db.execute(
-                    select(UserPurchasedAgent)
-                    .where(
-                        UserPurchasedAgent.user_id == user_id,
-                        UserPurchasedAgent.agent_id == agent_model.id,
-                    )
-                    .limit(1)
-                )
-                user_purchase = result.scalars().first()
                 model_name = (
                     user_purchase.selected_model
                     if user_purchase and user_purchase.selected_model
@@ -931,6 +943,7 @@ async def execute_agent_task(ctx: dict, payload_dict: dict):
                 tools_override=tools_override,
                 settings=settings,
                 approval_handler=_approval_handler,
+                agent_overrides=agent_overrides,
             )
 
             # Plumb ``contract.max_iterations`` onto the agent runner so the

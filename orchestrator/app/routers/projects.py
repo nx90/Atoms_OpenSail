@@ -2650,10 +2650,14 @@ async def _perform_project_deletion(
         fs_path = get_project_fs_path(project) if project else None
         if settings.deployment_mode == "docker" and project:
             try:
-                await orchestrator.delete_project_directory(project.slug)
-                logger.info(f"[DELETE] Deleted project directory: /projects/{project.slug}")
+                await orchestrator.delete_project_namespace(
+                    project_id=project_id,
+                    user_id=user_id,
+                    project_slug=project_slug,
+                )
+                logger.info(f"[DELETE] Deleted Docker resources for project {project_slug}")
             except Exception as e:
-                logger.warning(f"[DELETE] Failed to delete project directory: {e}")
+                logger.warning(f"[DELETE] Failed to delete Docker resources: {e}")
 
         elif fs_path is not None and fs_path.exists():
             # Desktop: direct filesystem cleanup.
@@ -6584,6 +6588,8 @@ async def _start_container_background_task(
 async def start_single_container(
     project_slug: str,
     container_id: UUID,
+    container_name: str | None = Query(default=None),
+    container_directory: str | None = Query(default=None),
     current_user: User = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -6634,7 +6640,17 @@ async def start_single_container(
     # Verify container exists and belongs to project
     container = await db.get(Container, container_id)
     if not container or container.project_id != project.id:
-        raise HTTPException(status_code=404, detail="Container not found")
+        if container_name:
+            stable_query = select(Container).where(
+                Container.project_id == project.id,
+                Container.name == container_name,
+            )
+            if container_directory is not None:
+                stable_query = stable_query.where(Container.directory == container_directory)
+            container = (await db.execute(stable_query.limit(1))).scalar_one_or_none()
+        if not container:
+            raise HTTPException(status_code=404, detail="Container not found")
+        container_id = container.id
 
     # FAST PATH: Check if container is already running (Docker mode only)
     # This avoids creating a background task for already-running containers
@@ -6664,6 +6680,7 @@ async def start_single_container(
                 "already_running": True,
                 "url": container_url,
                 "completed": True,
+                "container_id": str(container.id),
             }
 
     # Rate limiting: Check for existing active container start tasks
@@ -6719,6 +6736,7 @@ async def start_single_container(
         "message": f"Container start initiated for '{container.name}'",
         "container_name": container.name,
         "status_url": f"/api/tasks/{task.id}/status",
+        "container_id": str(container.id),
     }
 
 

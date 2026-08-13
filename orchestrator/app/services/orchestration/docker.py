@@ -236,6 +236,32 @@ class DockerOrchestrator(BaseOrchestrator):
             return sanitized[len(prefix) :]
         return sanitized
 
+    async def _ensure_project_volume_ownership(self, project_slug: str) -> None:
+        """Make an agent-written project tree writable by the uid-1000 dev image."""
+        if not self.use_volumes:
+            return
+        process = await asyncio.create_subprocess_exec(
+            "docker",
+            "run",
+            "--rm",
+            "--user",
+            "0:0",
+            "--entrypoint",
+            "chown",
+            "--volume",
+            "tesslate-projects-data:/projects",
+            "tesslate-devserver:latest",
+            "-R",
+            "1000:1000",
+            f"/projects/{project_slug}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await process.communicate()
+        if process.returncode != 0:
+            detail = stderr.decode().strip() if stderr else "unknown error"
+            raise RuntimeError(f"Failed to prepare project file permissions: {detail}")
+
     # =========================================================================
     # PROJECT LIFECYCLE
     # =========================================================================
@@ -244,6 +270,7 @@ class DockerOrchestrator(BaseOrchestrator):
         self, project, containers: list, connections: list, user_id: UUID, db: AsyncSession
     ) -> dict[str, Any]:
         """Start all containers for a project using Docker Compose."""
+        await self._ensure_project_volume_ownership(project.slug)
         env_overrides = None
         if db:
             env_overrides = await build_env_overrides(db, project.id, containers)
@@ -353,7 +380,12 @@ class DockerOrchestrator(BaseOrchestrator):
             logger.error(f"[DOCKER] Error stopping project: {e}", exc_info=True)
             raise
 
-    async def delete_project_namespace(self, project_id: UUID, user_id: UUID) -> None:
+    async def delete_project_namespace(
+        self,
+        project_id: UUID,
+        user_id: UUID,
+        project_slug: str | None = None,
+    ) -> None:
         """Docker analogue of the K8s namespace delete: full teardown.
 
         Called on uninstall. Runs ``docker compose down`` (removes
@@ -362,7 +394,8 @@ class DockerOrchestrator(BaseOrchestrator):
         try/except).
         """
         _ = user_id  # interface parity with K8s orchestrator
-        project_slug = await self._get_project_slug(project_id)
+        if project_slug is None:
+            project_slug = await self._get_project_slug(project_id)
         if project_slug is None:
             logger.warning("[DOCKER] delete_project_namespace: no slug for project %s", project_id)
             return
@@ -512,6 +545,7 @@ class DockerOrchestrator(BaseOrchestrator):
         db: AsyncSession,
     ) -> dict[str, Any]:
         """Start a single container in a project."""
+        await self._ensure_project_volume_ownership(project.slug)
         # Always regenerate compose file so env var changes and other
         # config updates are picked up on container restart.
         env_overrides = None
@@ -1709,11 +1743,14 @@ class DockerOrchestrator(BaseOrchestrator):
                 environment = env_overrides[container.id].copy()
             else:
                 environment = (container.environment_vars or {}).copy()
+            sanitized_container_name = f"{project.slug}-{service_name}"
+            preview_hostname = f"{sanitized_container_name}.{self.settings.app_domain}"
             environment.update(
                 {
                     "PROJECT_ID": str(project.id),
                     "CONTAINER_ID": str(container.id),
                     "CONTAINER_NAME": container.name,
+                    "__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS": preview_hostname,
                 }
             )
 
@@ -1730,8 +1767,6 @@ class DockerOrchestrator(BaseOrchestrator):
                     if dep_container:
                         dep_service_name = self._sanitize_service_name(dep_container.name)
                         depends_on.append(dep_service_name)
-
-            sanitized_container_name = f"{project.slug}-{service_name}"
 
             # Get startup command and port from TESSLATE.md
             startup_command, container_port = await self._get_container_config(project, container)

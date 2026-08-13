@@ -1586,6 +1586,124 @@ export const chatAttachmentsApi = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Personal user-authored skill workspaces
+// ---------------------------------------------------------------------------
+
+export interface PersonalSkillSummary {
+  id: string;
+  name: string;
+  description: string;
+  revision: number;
+  created_at: string | null;
+  updated_at: string | null;
+  source: 'personal';
+}
+
+export interface PersonalSkillEntry {
+  path: string;
+  is_directory: boolean;
+  size_bytes: number;
+  updated_at: string | null;
+}
+
+export interface PersonalSkillTree {
+  skill: PersonalSkillSummary;
+  entries: PersonalSkillEntry[];
+}
+
+export interface PersonalSkillFile {
+  skill: PersonalSkillSummary;
+  path: string;
+  content: string;
+  size_bytes: number;
+}
+
+export const personalSkillsApi = {
+  list: async (): Promise<PersonalSkillSummary[]> => {
+    const response = await api.get('/api/personal-skills');
+    return response.data;
+  },
+  create: async (name: string, description = ''): Promise<PersonalSkillSummary> => {
+    const response = await api.post('/api/personal-skills', { name, description });
+    return response.data;
+  },
+  get: async (skillId: string): Promise<PersonalSkillSummary> => {
+    const response = await api.get(`/api/personal-skills/${skillId}`);
+    return response.data;
+  },
+  remove: async (skillId: string): Promise<void> => {
+    await api.delete(`/api/personal-skills/${skillId}`);
+  },
+  tree: async (skillId: string): Promise<PersonalSkillTree> => {
+    const response = await api.get(`/api/personal-skills/${skillId}/tree`);
+    return response.data;
+  },
+  readFile: async (skillId: string, path: string): Promise<PersonalSkillFile> => {
+    const response = await api.get(`/api/personal-skills/${skillId}/file`, {
+      params: { path },
+    });
+    return response.data;
+  },
+  writeFile: async (
+    skillId: string,
+    path: string,
+    content: string,
+    expectedRevision: number
+  ): Promise<PersonalSkillFile> => {
+    const response = await api.put(`/api/personal-skills/${skillId}/file`, {
+      path,
+      content,
+      expected_revision: expectedRevision,
+    });
+    return response.data;
+  },
+  createDirectory: async (
+    skillId: string,
+    path: string,
+    expectedRevision: number
+  ): Promise<PersonalSkillSummary> => {
+    const response = await api.post(`/api/personal-skills/${skillId}/directory`, {
+      path,
+      expected_revision: expectedRevision,
+    });
+    return response.data;
+  },
+  renameEntry: async (
+    skillId: string,
+    oldPath: string,
+    newPath: string,
+    expectedRevision: number
+  ): Promise<PersonalSkillSummary> => {
+    const response = await api.post(`/api/personal-skills/${skillId}/rename`, {
+      old_path: oldPath,
+      new_path: newPath,
+      expected_revision: expectedRevision,
+    });
+    return response.data;
+  },
+  deleteEntry: async (
+    skillId: string,
+    path: string,
+    expectedRevision: number
+  ): Promise<PersonalSkillSummary> => {
+    const response = await api.delete(`/api/personal-skills/${skillId}/entry`, {
+      params: { path, expected_revision: expectedRevision },
+    });
+    return response.data;
+  },
+  assignments: async (skillId: string): Promise<string[]> => {
+    const response = await api.get(`/api/personal-skills/${skillId}/assignments`);
+    return response.data.agent_ids || [];
+  },
+  bind: async (skillId: string, agentId: string): Promise<void> => {
+    await api.post(`/api/personal-skills/${skillId}/assignments`, { agent_id: agentId });
+  },
+  unbind: async (skillId: string, agentId: string): Promise<void> => {
+    await api.delete(`/api/personal-skills/${skillId}/assignments/${agentId}`);
+  },
+};
+
 export interface WorkspaceAttachSubmit {
   action: 'attach' | 'create_empty' | 'cancel';
   project_id?: string;

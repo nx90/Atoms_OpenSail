@@ -118,6 +118,13 @@
 - `git_repo_url`: GitHub repo URL for open-source items (nullable, String(500))
 - Related: Can be forked by users (parent_agent_id), reviewed, purchased, has skill_assignments
 
+**PersonalSkill / PersonalSkillFile / PersonalSkillAssignment** (models.py)
+- Purpose: Private user-authored skill folders with explicit per-agent binding
+- `PersonalSkill`: owner, frontmatter-derived name/description, optimistic `revision`
+- `PersonalSkillFile`: canonical relative path, directory flag, text content, byte size; root `SKILL.md` is service-protected
+- `PersonalSkillAssignment`: links one owned personal skill to one agent for one user
+- V1 constraints: creator-only, text-only, PostgreSQL-backed, never auto-bound or marketplace-published
+
 **MarketplaceBase** (models.py)
 - Purpose: Project templates (React, FastAPI, Next.js, etc.): both seeded and user-submitted
 - Key fields: `name`, `slug`, `git_repo_url`, `category`, `pricing_type`, `tech_stack`, `created_by_user_id`, `visibility`
@@ -132,7 +139,8 @@
 
 **UserPurchasedAgent** (models.py)
 - Purpose: Tracks which agents users have in their library
-- Key fields: `user_id`, `agent_id`, `purchase_type`, `stripe_subscription_id`, `is_active`
+- Key fields: `user_id`, `agent_id`, `purchase_type`, `stripe_subscription_id`, `is_active`, `selected_model`, `agent_overrides`
+- `agent_overrides`: Per-user/team editable configuration for the System Default Agent; never mutates the global pseudo-row
 
 **ProjectAgent** (models.py)
 - Purpose: Assigns agents to specific projects

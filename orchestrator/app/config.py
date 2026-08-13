@@ -651,6 +651,14 @@ class Settings(BaseSettings):
     # Per-user, not global: tenant A hitting the cap does not affect tenant B.
     tsl_max_running_apps_per_user: int = 10
 
+    # Personal user-authored skill workspaces (text-only in v1)
+    personal_skills_max_per_user: int = 100
+    personal_skill_max_entries: int = 200
+    personal_skill_max_file_bytes: int = 262_144
+    personal_skill_max_total_bytes: int = 2_097_152
+    personal_skill_max_path_length: int = 512
+    personal_skill_max_depth: int = 8
+
     # ==========================================================================
     # Email Compliance
     # ==========================================================================

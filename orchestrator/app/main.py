@@ -74,6 +74,7 @@ from .routers import (
     mcp_oauth,
     mcp_server,
     node_config,
+    personal_skills,
     projects,
     referrals,
     schedules,
@@ -1412,6 +1413,7 @@ async def get_csrf_token():
 # ============================================================================
 
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+app.include_router(personal_skills.router)
 app.include_router(node_config.router, prefix="/api", tags=["node-config"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(chat_attachments.router, prefix="/api", tags=["chat-attachments"])

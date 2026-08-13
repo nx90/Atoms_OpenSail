@@ -26,6 +26,15 @@ type RecentProject = {
   updatedAt: string;
 };
 
+export function getWorkspaceCreateArgs(
+  projectName: string,
+  baseId?: string,
+  baseVersion?: string
+): Parameters<typeof projectsApi.create> {
+  if (baseId === '') return [projectName, '', 'empty'];
+  return [projectName, '', 'base', undefined, 'main', baseId, baseVersion || undefined];
+}
+
 // Relative time helper — "2h ago", "3d ago", etc.
 // Uses Intl.RelativeTimeFormat so it respects the browser locale.
 const RELATIVE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
@@ -452,13 +461,7 @@ export default function Home() {
       const creatingToast = toast.loading('Creating workspace...');
       try {
         const response = await projectsApi.create(
-          projectName,
-          '',
-          'base',
-          undefined,
-          'main',
-          baseId,
-          baseVersion || undefined
+          ...getWorkspaceCreateArgs(projectName, baseId, baseVersion)
         );
         const project = response.project;
         const taskId = response.task_id;

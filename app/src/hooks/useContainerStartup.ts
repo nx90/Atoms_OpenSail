@@ -19,6 +19,8 @@ interface UseContainerStartupOptions {
   onError?: (error: string) => void;
   healthCheckInterval?: number;
   healthCheckMaxRetries?: number;
+  containerName?: string;
+  containerDirectory?: string;
 }
 
 const PHASE_MESSAGES: Record<string, string> = {
@@ -39,7 +41,14 @@ export function useContainerStartup(
   containerId: string | null,
   options: UseContainerStartupOptions = {}
 ) {
-  const { onReady, onError, healthCheckInterval = 2000, healthCheckMaxRetries = 90 } = options;
+  const {
+    onReady,
+    onError,
+    healthCheckInterval = 2000,
+    healthCheckMaxRetries = 90,
+    containerName,
+    containerDirectory,
+  } = options;
 
   const [state, setState] = useState<ContainerStartupState>({
     status: 'idle',
@@ -97,6 +106,10 @@ export function useContainerStartup(
         // Check if task completed
         if (task.status === 'completed') {
           cleanup();
+
+          if (task.result?.container_id) {
+            activeContainerIdRef.current = String(task.result.container_id);
+          }
 
           // Get container URL from result
           const containerUrl = task.result?.url || task.result?.container_url || null;
@@ -247,11 +260,17 @@ export function useContainerStartup(
       });
 
       try {
+        const query = new URLSearchParams();
+        if (containerName) query.set('container_name', containerName);
+        if (containerDirectory !== undefined) {
+          query.set('container_directory', containerDirectory);
+        }
+        const queryString = query.toString();
         // Call start container API - this returns task_id immediately
         // Use absolute URL so the request always reaches the correct backend
         // (avoids Vite dev-proxy sending relative paths to the wrong host).
         const response = await fetch(
-          `${config.API_URL}/api/projects/${projectSlug}/containers/${effectiveContainerId}/start`,
+          `${config.API_URL}/api/projects/${projectSlug}/containers/${effectiveContainerId}/start${queryString ? `?${queryString}` : ''}`,
           {
             method: 'POST',
             headers: {
@@ -267,6 +286,7 @@ export function useContainerStartup(
         }
 
         const data = await response.json();
+        if (data.container_id) activeContainerIdRef.current = String(data.container_id);
 
         // FAST PATH: Container is already running (Docker mode returns task_id: null)
         if (data.already_running && data.url) {
@@ -309,7 +329,16 @@ export function useContainerStartup(
         onError?.(errorMsg);
       }
     },
-    [projectSlug, containerId, cleanup, pollTaskStatus, onError, startHealthChecking]
+    [
+      projectSlug,
+      containerId,
+      containerName,
+      containerDirectory,
+      cleanup,
+      pollTaskStatus,
+      onError,
+      startHealthChecking,
+    ]
   );
 
   // Retry function — use the stored containerId from the initial start

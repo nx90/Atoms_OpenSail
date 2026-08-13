@@ -30,8 +30,9 @@ class SkillCatalogEntry:
 
     name: str
     description: str
-    source: str  # "builtin" | "db" | "file"
+    source: str  # "builtin" | "db" | "personal" | "file"
     skill_id: UUID | None = None
+    personal_skill_id: UUID | None = None
     file_path: str | None = None
     is_builtin: bool = False
 
@@ -75,6 +76,8 @@ async def discover_skills(
             if s.skill_id is not None and s.skill_id in seen_ids:
                 continue
             skills.append(s)
+
+        skills.extend(await _discover_personal_skills(agent_id, user_id, db))
 
     # Source C: Project file-based skills (local FS or container)
     if project_id:
@@ -173,6 +176,40 @@ async def _discover_db_skills(
 
     except Exception as e:
         logger.warning(f"Failed to discover DB skills: {e}")
+        return []
+
+
+async def _discover_personal_skills(
+    agent_id: UUID, user_id: UUID, db: AsyncSession
+) -> list[SkillCatalogEntry]:
+    """Discover private skills explicitly bound to the active agent."""
+    try:
+        from ..models import PersonalSkill, PersonalSkillAssignment
+
+        result = await db.execute(
+            select(PersonalSkill.id, PersonalSkill.name, PersonalSkill.description)
+            .join(
+                PersonalSkillAssignment,
+                PersonalSkillAssignment.skill_id == PersonalSkill.id,
+            )
+            .where(
+                PersonalSkillAssignment.agent_id == agent_id,
+                PersonalSkillAssignment.user_id == user_id,
+                PersonalSkillAssignment.enabled.is_(True),
+                PersonalSkill.user_id == user_id,
+            )
+        )
+        return [
+            SkillCatalogEntry(
+                name=row.name,
+                description=row.description,
+                source="personal",
+                personal_skill_id=row.id,
+            )
+            for row in result.all()
+        ]
+    except Exception as exc:
+        logger.warning("Failed to discover personal skills: %s", exc)
         return []
 
 

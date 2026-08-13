@@ -363,6 +363,8 @@ function ProjectPageInner() {
     slug,
     needsContainerStart ? currentContainerIdRef.current : null,
     {
+      containerName: (container?.name as string | undefined) || undefined,
+      containerDirectory: (container?.directory as string | undefined) || undefined,
       onReady: (url) => {
         setDevServerUrl(url);
         setDevServerUrlWithAuth(url);
@@ -448,11 +450,32 @@ function ProjectPageInner() {
       return;
     }
 
-    currentContainerIdRef.current = container.id as string;
+    let currentContainer = container;
+    try {
+      const latestContainers = await projectsApi.getContainers(slug);
+      const stableMatch = latestContainers.find(
+        (candidate: Record<string, unknown>) =>
+          candidate.id === container.id ||
+          (candidate.name === container.name && candidate.directory === container.directory)
+      );
+      if (stableMatch) {
+        currentContainer = stableMatch;
+        setContainer(stableMatch);
+        setContainers(latestContainers);
+        if (stableMatch.id !== container.id) {
+          localStorage.setItem(`tesslate-container-${slug}`, stableMatch.id as string);
+          navigate(`/project/${slug}?container=${stableMatch.id}`, { replace: true });
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to refresh containers before start; backend will resolve identity', error);
+    }
+
+    currentContainerIdRef.current = currentContainer.id as string;
     setNeedsContainerStart(true);
     toast.loading('Starting environment...', { id: 'container-start' });
-    containerStartup.startContainer(container.id as string);
-  }, [container, containerStartup, slug]);
+    containerStartup.startContainer(currentContainer.id as string);
+  }, [container, containerStartup, navigate, slug]);
 
   const handleIdleWarning = useCallback((minutesLeft: number) => {
     setIdleWarningMinutes(minutesLeft);
@@ -764,14 +787,18 @@ function ProjectPageInner() {
         return;
       }
 
-      const foundContainer = containerId
+      const requestedContainer = containerId
         ? allContainers.find((c: Record<string, unknown>) => c.id === containerId)
-        : allContainers[0];
+        : undefined;
+      const foundContainer = requestedContainer || allContainers[0];
 
       if (foundContainer) {
         setContainer(foundContainer);
         if (slug) {
           localStorage.setItem(`tesslate-container-${slug}`, foundContainer.id as string);
+          if (containerId && !requestedContainer) {
+            navigate(`/project/${slug}?container=${foundContainer.id}`, { replace: true });
+          }
         }
 
         let status: Record<string, unknown> | null = null;
@@ -1285,6 +1312,17 @@ function ProjectPageInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerId, slug]);
+
+  useEffect(() => {
+    if (!slug || !containerId || containerId === PROJECT_ROOT_ID || containers.length === 0) {
+      return;
+    }
+    if (containers.some((item) => item.id === containerId)) return;
+    const current = containers[0];
+    if (!current?.id) return;
+    localStorage.setItem(`tesslate-container-${slug}`, current.id as string);
+    navigate(`/project/${slug}?container=${current.id}`, { replace: true });
+  }, [containerId, containers, navigate, slug]);
 
   useEffect(() => {
     if (container) {

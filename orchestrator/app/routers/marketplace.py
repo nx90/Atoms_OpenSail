@@ -25,6 +25,8 @@ from ..models import (
     MarketplaceAgent,
     MarketplaceBase,
     MarketplaceSource,
+    PersonalSkill,
+    PersonalSkillAssignment,
     ProjectAgent,
     Theme,
     User,
@@ -1978,6 +1980,58 @@ async def update_custom_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    from ..services.default_agent import SYSTEM_DEFAULT_AGENT_ID
+
+    if agent.id == SYSTEM_DEFAULT_AGENT_ID:
+        team_id = current_user.default_team_id
+        ownership_filter = (
+            UserPurchasedAgent.team_id == team_id
+            if team_id
+            else UserPurchasedAgent.user_id == current_user.id
+        )
+        purchase = (
+            await db.execute(
+                select(UserPurchasedAgent)
+                .where(
+                    ownership_filter,
+                    UserPurchasedAgent.agent_id == SYSTEM_DEFAULT_AGENT_ID,
+                )
+                .limit(1)
+            )
+        ).scalars().first()
+        if purchase is None:
+            purchase = UserPurchasedAgent(
+                user_id=current_user.id,
+                team_id=team_id,
+                agent_id=SYSTEM_DEFAULT_AGENT_ID,
+                purchase_type="system_default",
+                is_active=True,
+            )
+            db.add(purchase)
+
+        allowed = {
+            "name",
+            "description",
+            "system_prompt",
+            "tools",
+            "tool_configs",
+            "avatar_url",
+            "config",
+        }
+        overrides = dict(purchase.agent_overrides or {})
+        for key in allowed:
+            if key in update_data:
+                overrides[key] = update_data[key]
+        purchase.agent_overrides = overrides
+        if update_data.get("model"):
+            purchase.selected_model = update_data["model"]
+        await db.commit()
+        return {
+            "message": "System Default Agent settings updated",
+            "agent_id": str(SYSTEM_DEFAULT_AGENT_ID),
+            "success": True,
+        }
+
     # Built-in skills are immutable via the UI — edits live in seed code.
     _reject_if_builtin(agent)
 
@@ -2273,6 +2327,11 @@ async def get_user_agents(
         ),
         purchase_date=(
             sys_default_override_row.purchase_date if sys_default_override_row is not None else None
+        ),
+        overrides=(
+            sys_default_override_row.agent_overrides
+            if sys_default_override_row is not None
+            else None
         ),
     )
     response.insert(0, sys_default_dict)
@@ -5969,6 +6028,7 @@ async def get_agent_skills(
                 "tags": skill.tags or [],
                 "is_featured": skill.is_featured,
                 "is_purchased": True,
+                "source": "marketplace",
                 "creator_type": creator_type,
                 "creator_name": creator_name,
                 "creator_username": creator_username,
@@ -5979,6 +6039,38 @@ async def get_agent_skills(
                 if skill.forked_by_user_id
                 else None,
                 "creator_avatar_url": creator_avatar_url,
+            }
+        )
+
+    personal_result = await db.execute(
+        select(PersonalSkillAssignment, PersonalSkill)
+        .join(PersonalSkill, PersonalSkill.id == PersonalSkillAssignment.skill_id)
+        .where(
+            PersonalSkillAssignment.agent_id == agent_id,
+            PersonalSkillAssignment.user_id == current_user.id,
+            PersonalSkillAssignment.enabled.is_(True),
+            PersonalSkill.user_id == current_user.id,
+        )
+    )
+    for _assignment, skill in personal_result.all():
+        skills.append(
+            {
+                "id": skill.id,
+                "name": skill.name,
+                "slug": None,
+                "description": skill.description,
+                "category": "personal",
+                "item_type": "skill",
+                "source_type": "personal",
+                "source": "personal",
+                "is_active": True,
+                "is_purchased": True,
+                "pricing_type": "private",
+                "price": 0,
+                "features": [],
+                "tags": ["personal"],
+                "is_featured": False,
+                "revision": skill.revision,
             }
         )
 

@@ -45,8 +45,8 @@ interface OpenTab {
 }
 
 interface CodeEditorProps {
-  projectId: number;
-  slug: string;
+  projectId?: number;
+  slug?: string;
   fileTree: FileTreeEntry[];
   containerDir?: string;
   onFileUpdate: (filePath: string, content: string) => void;
@@ -67,6 +67,10 @@ interface CodeEditorProps {
   onTabsChange?: (tabs: { path: string; name: string }[]) => void;
   /** Callback when selected file changes */
   onSelectedFileChange?: (path: string | null) => void;
+  /** Override project file loading for another file workspace (for example personal skills). */
+  loadFileContent?: (path: string) => Promise<{ content: string }>;
+  /** Paths that cannot be renamed or deleted. */
+  protectedPaths?: string[];
 }
 
 function CodeEditor({
@@ -87,6 +91,8 @@ function CodeEditor({
   onEditorRef,
   onTabsChange,
   onSelectedFileChange,
+  loadFileContent,
+  protectedPaths = [],
 }: CodeEditorProps) {
   const { theme } = useTheme();
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
@@ -141,6 +147,12 @@ function CodeEditor({
 
   // Lazy-loaded content cache: path → server content (baseline for dirty tracking)
   const localContentRef = useRef<Map<string, string>>(new Map());
+  const protectedPathSet = useMemo(() => new Set(protectedPaths), [protectedPaths]);
+  const readFileContent = useCallback(
+    (path: string) =>
+      loadFileContent ? loadFileContent(path) : projectsApi.getFileContent(slug || '', path, containerDir),
+    [loadFileContent, slug, containerDir]
+  );
 
   // ── Language detection ─────────────────────────────────────────────
 
@@ -397,8 +409,7 @@ function CodeEditor({
     if (!selectedFile || localContentRef.current.has(selectedFile)) return;
     let cancelled = false;
     setLoadingContent(true);
-    projectsApi
-      .getFileContent(slug, selectedFile, containerDir)
+    readFileContent(selectedFile)
       .then((res) => {
         if (cancelled) return;
         localContentRef.current.set(selectedFile, res.content);
@@ -410,18 +421,18 @@ function CodeEditor({
     return () => {
       cancelled = true;
     };
-  }, [selectedFile, slug, containerDir]);
+  }, [selectedFile, readFileContent]);
 
   // Invalidate content cache when files are updated externally (e.g. Save Config, snapshot restore)
   useEffect(() => {
+    if (loadFileContent) return;
     const unsubscribe = fileEvents.on((detail) => {
       if (detail.type === 'file-updated' && detail.filePath) {
         localContentRef.current.delete(detail.filePath);
         // Re-fetch if this is the currently selected file
         if (selectedFileRef.current === detail.filePath) {
           setLoadingContent(true);
-          projectsApi
-            .getFileContent(slug, detail.filePath, containerDir)
+          readFileContent(detail.filePath)
             .then((res) => {
               localContentRef.current.set(detail.filePath!, res.content);
               setLoadingContent(false);
@@ -435,8 +446,7 @@ function CodeEditor({
         setDirtyBuffers(new Map());
         if (selectedFileRef.current) {
           setLoadingContent(true);
-          projectsApi
-            .getFileContent(slug, selectedFileRef.current, containerDir)
+          readFileContent(selectedFileRef.current)
             .then((res) => {
               localContentRef.current.set(selectedFileRef.current!, res.content);
               setLoadingContent(false);
@@ -446,7 +456,7 @@ function CodeEditor({
       }
     });
     return () => unsubscribe();
-  }, [slug, containerDir]);
+  }, [loadFileContent, readFileContent]);
 
   // ── Directory toggle ──────────────────────────────────────────────
 
@@ -564,6 +574,7 @@ function CodeEditor({
   const startRename = useCallback(
     (node: FileNode) => {
       closeContextMenu();
+      if (protectedPathSet.has(node.path)) return;
       const parentPath = node.path.includes('/')
         ? node.path.substring(0, node.path.lastIndexOf('/'))
         : '';
@@ -574,15 +585,16 @@ function CodeEditor({
         originalPath: node.path,
       });
     },
-    [closeContextMenu]
+    [closeContextMenu, protectedPathSet]
   );
 
   const confirmDelete = useCallback(
     (node: FileNode) => {
       closeContextMenu();
+      if (protectedPathSet.has(node.path)) return;
       setDeleteConfirm(node);
     },
-    [closeContextMenu]
+    [closeContextMenu, protectedPathSet]
   );
 
   const executeDelete = useCallback(() => {

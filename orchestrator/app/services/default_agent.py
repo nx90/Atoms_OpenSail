@@ -150,6 +150,7 @@ def get_system_default_listing_dict(
     is_enabled: bool = True,
     selected_model: str | None = None,
     purchase_date: datetime | None = None,
+    overrides: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Return the system default in the same dict shape as ``/my-agents``.
 
@@ -157,7 +158,7 @@ def get_system_default_listing_dict(
     user's ``UserPurchasedAgent`` row if one exists, or sensible defaults
     if not.
     """
-    fields = SYSTEM_DEFAULT_AGENT_FIELDS
+    fields = {**SYSTEM_DEFAULT_AGENT_FIELDS, **(overrides or {})}
     return {
         "id": str(SYSTEM_DEFAULT_AGENT_ID),
         "name": fields["name"],
@@ -177,6 +178,7 @@ def get_system_default_listing_dict(
         "features": fields["features"],
         "tools": fields["tools"],
         "tool_configs": fields["tool_configs"],
+        "config": fields.get("config") or {},
         "purchase_date": (purchase_date or datetime.now(UTC)).isoformat(),
         "purchase_type": "system_default",
         "expires_at": None,

@@ -3,15 +3,27 @@
 **File**: `orchestrator/app/services/skill_discovery.py`
 **Related**: `orchestrator/app/services/skill_markers.py`, `orchestrator/app/agent/tools/skill_ops/load_skill.py`, `orchestrator/app/seeds/skills.py`
 
-## Three sources, one catalog
+## Four sources, one catalog
 
 `discover_skills()` merges skills from three independent sources into a single catalog that the worker injects into the agent's message (`agent/prompts.py:render_skills_catalog`). The catalog contains only `name + description + source` — full bodies are fetched on demand via the `load_skill` tool.
 
 1. **Built-in** (`source="builtin"`) — rows where `MarketplaceAgent.is_builtin=True`. Available to **every** agent for **every** user, no `AgentSkillAssignment` needed. This is the delivery mechanism for platform reference skills like `project-architecture`.
 2. **Database assignment** (`source="db"`) — skills the user explicitly installed on the agent via `AgentSkillAssignment`.
-3. **Project file** (`source="file"`) — `.agents/skills/SKILL.md` discovered inside the user's container.
+3. **Personal assignment** (`source="personal"`) — private PostgreSQL-backed skill folders created in Library and explicitly bound through `PersonalSkillAssignment`. They are never attached automatically, including to System Default Agent.
+4. **Project file** (`source="file"`) — `.agents/skills/SKILL.md` discovered inside the user's container.
 
 De-dup: if a user has explicitly installed a built-in (creating both a built-in row and an `AgentSkillAssignment` pointing at the same ID), it appears once, tagged as built-in.
+
+## Personal skill folders
+
+Personal skills are creator-private text workspaces managed under `Library → Skills`.
+Each folder has a protected root `SKILL.md` and may contain nested text references.
+The root YAML frontmatter (`name`, `description`) is authoritative for Library metadata.
+
+Discovery returns metadata only. `load_skill(skill_name)` loads the root instruction body and
+returns a bounded reference manifest. The agent can then call
+`load_skill(skill_name, reference_path="references/example.md")` to disclose one nested file.
+Every load rechecks user ownership and the active agent assignment.
 
 ## `is_builtin` — identity with no injection surface
 

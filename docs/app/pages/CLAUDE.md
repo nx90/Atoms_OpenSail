@@ -72,7 +72,7 @@ Every route-level component in `app/src/pages/` and sub-directories.
 |------|-------|---------|
 | `library/AgentsPage.tsx` | `/library?tab=agents` | Purchased and custom agents with enable/disable, edit (name, icon, model, compaction_model, context_window, thinking_effort), delete |
 | `library/BasesPage.tsx` | `/library?tab=bases` | User-submitted bases with visibility toggle, edit, soft-delete, download count. "Submit Base" opens `SubmitBaseModal` |
-| `library/SkillsPage.tsx` | `/library?tab=skills` | Purchased marketplace skills filtered from `marketplaceApi.getAllSkills()` |
+| `library/SkillsPage.tsx` | `/library?tab=skills` | Purchased marketplace skills plus private personal skill workspaces; create/edit/delete personal skills and open the shared Monaco file editor |
 | `library/ConnectorsPage.tsx` | `/library?tab=connectors` | Installed MCP connectors (per-user and per-project); OAuth reconnect, tool permissions drawer, uninstall |
 | `library/ModelsPage.tsx` | `/library?tab=models` | Available LLM models with pricing, BYOK key management |
 | `library/ThemesPage.tsx` | `/library?tab=themes` | User's themes (purchased + custom); enable, create from scratch, delete |

@@ -35,7 +35,7 @@ import { MarkerEditor, MarkerPalette, type MarkerEditorHandle } from '../../comp
 import { ConfirmDialog } from '../../components/modals';
 import { ToolManagement } from '../../components/ToolManagement';
 import { ImageUpload } from '../../components/ImageUpload';
-import { marketplaceApi } from '../../lib/api';
+import { marketplaceApi, personalSkillsApi } from '../../lib/api';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { staggerContainer, staggerItem } from '../../components/cards';
@@ -921,14 +921,14 @@ function EditAgentModal({
 
   // Skills state
   const [agentSkills, setAgentSkills] = useState<
-    { id: string; name: string; description: string; slug: string }[]
+    { id: string; name: string; description: string; slug?: string; source: 'marketplace' | 'personal' }[]
   >([]);
   const [skillsExpanded, setSkillsExpanded] = useState(false);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [showSkillSearch, setShowSkillSearch] = useState(false);
   const [skillSearchQuery, setSkillSearchQuery] = useState('');
   const [skillSearchResults, setSkillSearchResults] = useState<
-    { id: string; name: string; description: string; slug: string; category: string }[]
+    { id: string; name: string; description: string; slug?: string; category: string; source: 'marketplace' | 'personal' }[]
   >([]);
   const [skillSearchLoading, setSkillSearchLoading] = useState(false);
 
@@ -957,11 +957,12 @@ function EditAgentModal({
         .then((data) => {
           setAgentSkills(
             (data.skills || []).map(
-              (s: { id: string; name: string; description: string; slug: string }) => ({
+              (s: { id: string; name: string; description: string; slug?: string; source?: string }) => ({
                 id: s.id,
                 name: s.name,
                 description: s.description,
                 slug: s.slug,
+                source: s.source === 'personal' ? 'personal' : 'marketplace',
               })
             )
           );
@@ -1042,10 +1043,12 @@ function EditAgentModal({
     }
     setSkillSearchLoading(true);
     try {
-      const data = await marketplaceApi.getAllSkills({ search: query, limit: 5 });
+      const [data, personal] = await Promise.all([
+        marketplaceApi.getAllSkills({ search: query, limit: 5 }),
+        personalSkillsApi.list(),
+      ]);
       const installed = new Set(agentSkills.map((s) => s.id));
-      setSkillSearchResults(
-        (data.skills || [])
+      const marketplace = (data.skills || [])
           .filter((s: { id: string }) => !installed.has(s.id))
           .map(
             (s: {
@@ -1060,9 +1063,25 @@ function EditAgentModal({
               description: s.description,
               slug: s.slug,
               category: s.category,
+              source: 'marketplace' as const,
             })
-          )
-      );
+          );
+      const normalizedQuery = query.trim().toLowerCase();
+      const authored = personal
+        .filter(
+          (skill) =>
+            !installed.has(skill.id) &&
+            (skill.name.toLowerCase().includes(normalizedQuery) ||
+              skill.description.toLowerCase().includes(normalizedQuery))
+        )
+        .map((skill) => ({
+          id: skill.id,
+          name: skill.name,
+          description: skill.description,
+          category: 'personal',
+          source: 'personal' as const,
+        }));
+      setSkillSearchResults([...authored, ...marketplace]);
     } catch {
       setSkillSearchResults([]);
     } finally {
@@ -1070,17 +1089,12 @@ function EditAgentModal({
     }
   };
 
-  const handleInstallSkill = async (skillId: string) => {
+  const handleInstallSkill = async (skill: (typeof skillSearchResults)[number]) => {
     try {
-      await marketplaceApi.installSkillOnAgent(skillId, agent.id);
-      const skill = skillSearchResults.find((s) => s.id === skillId);
-      if (skill) {
-        setAgentSkills((prev) => [
-          ...prev,
-          { id: skill.id, name: skill.name, description: skill.description, slug: skill.slug },
-        ]);
-        setSkillSearchResults((prev) => prev.filter((s) => s.id !== skillId));
-      }
+      if (skill.source === 'personal') await personalSkillsApi.bind(skill.id, agent.id);
+      else await marketplaceApi.installSkillOnAgent(skill.id, agent.id);
+      setAgentSkills((prev) => [...prev, skill]);
+      setSkillSearchResults((prev) => prev.filter((item) => item.id !== skill.id));
       toast.success('Skill installed');
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } } };
@@ -1090,7 +1104,9 @@ function EditAgentModal({
 
   const handleUninstallSkill = async (skillId: string) => {
     try {
-      await marketplaceApi.uninstallSkillFromAgent(skillId, agent.id);
+      const skill = agentSkills.find((item) => item.id === skillId);
+      if (skill?.source === 'personal') await personalSkillsApi.unbind(skillId, agent.id);
+      else await marketplaceApi.uninstallSkillFromAgent(skillId, agent.id);
       setAgentSkills((prev) => prev.filter((s) => s.id !== skillId));
       toast.success('Skill removed');
     } catch (error: unknown) {
@@ -1578,7 +1594,7 @@ function EditAgentModal({
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleInstallSkill(skill.id)}
+                          onClick={() => handleInstallSkill(skill)}
                           className="btn btn-sm btn-filled flex-shrink-0 ml-2"
                         >
                           Install

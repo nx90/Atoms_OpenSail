@@ -20,7 +20,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 from sqlalchemy.sql import expression, func
 
 from app.types.guid import GUID
@@ -1484,6 +1484,97 @@ class AgentSkillAssignment(Base):
     user = relationship("User")
 
 
+class PersonalSkill(Base):
+    """Private, user-authored skill folder stored in PostgreSQL."""
+
+    __tablename__ = "personal_skills"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(
+        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name = Column(String(100), nullable=False)
+    normalized_name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=False, default="", server_default="")
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    files = relationship(
+        "PersonalSkillFile", back_populates="skill", cascade="all, delete-orphan"
+    )
+    assignments = relationship(
+        "PersonalSkillAssignment", back_populates="skill", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "normalized_name", name="uq_personal_skills_user_name"),
+        CheckConstraint("revision >= 1", name="ck_personal_skills_revision_positive"),
+    )
+
+
+class PersonalSkillFile(Base):
+    """One text file or directory entry inside a personal skill folder."""
+
+    __tablename__ = "personal_skill_files"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4, index=True)
+    skill_id = Column(
+        GUID(), ForeignKey("personal_skills.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    path = Column(String(512), nullable=False)
+    is_directory = Column(Boolean, nullable=False, default=False, server_default="false")
+    content = Column(Text, nullable=True)
+    size_bytes = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    skill = relationship("PersonalSkill", back_populates="files")
+
+    __table_args__ = (
+        UniqueConstraint("skill_id", "path", name="uq_personal_skill_files_skill_path"),
+        CheckConstraint("size_bytes >= 0", name="ck_personal_skill_files_size_nonnegative"),
+        CheckConstraint(
+            "(is_directory = true AND content IS NULL AND size_bytes = 0) OR "
+            "(is_directory = false AND content IS NOT NULL)",
+            name="ck_personal_skill_files_entry_shape",
+        ),
+    )
+
+
+class PersonalSkillAssignment(Base):
+    """Explicit user-controlled binding of a personal skill to an agent."""
+
+    __tablename__ = "personal_skill_assignments"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4, index=True)
+    skill_id = Column(
+        GUID(), ForeignKey("personal_skills.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    agent_id = Column(
+        GUID(), ForeignKey("marketplace_agents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(
+        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    enabled = Column(Boolean, nullable=False, default=True, server_default="true")
+    added_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    skill = relationship("PersonalSkill", back_populates="assignments")
+    agent = relationship("MarketplaceAgent", foreign_keys=[agent_id])
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "skill_id", "agent_id", name="uq_personal_skill_assignments_binding"
+        ),
+    )
+
+
 class UserPurchasedAgent(Base):
     """Tracks which agents users have purchased/added to their library."""
 
@@ -1502,6 +1593,7 @@ class UserPurchasedAgent(Base):
     expires_at = Column(DateTime(timezone=True), nullable=True)  # For subscriptions
     is_active = Column(Boolean, default=True)
     selected_model = Column(String, nullable=True)  # User's model override for open source agents
+    agent_overrides = Column(JSON, nullable=True)  # Per-user config for the System Default Agent
 
     # Relationships
     user = relationship("User", back_populates="purchased_agents")
@@ -3276,8 +3368,12 @@ class AgentSchedule(Base):
         index=True,
     )
 
-    user = relationship("User", backref="agent_schedules")
-    project = relationship("Project", backref="agent_schedules")
+    user = relationship(
+        "User", backref=backref("agent_schedules", passive_deletes=True)
+    )
+    project = relationship(
+        "Project", backref=backref("agent_schedules", passive_deletes=True)
+    )
     trigger_events = relationship(
         "ScheduleTriggerEvent",
         back_populates="schedule",
