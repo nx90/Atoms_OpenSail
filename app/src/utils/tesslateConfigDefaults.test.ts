@@ -7,7 +7,7 @@ describe('createDefaultAppConfig', () => {
     expect(createDefaultAppConfig()).toEqual({
       directory: '.',
       port: 3000,
-      start: 'npm install && npm run dev -- --host 0.0.0.0',
+      start: 'npm install && npm run dev -- --host 0.0.0.0 --port 3000 --strictPort',
       build: 'npm run build',
       output: 'dist',
       framework: 'react',
