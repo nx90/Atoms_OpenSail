@@ -95,7 +95,7 @@ SYSTEM_DEFAULT_AGENT_FIELDS: dict[str, object | None] = {
     "agent_type": "TesslateAgent",
     "tools": None,  # null => TesslateAgent's default registry
     "tool_configs": None,
-    "model": "kimi-k2.5",
+    "model": None,
     "icon": "🤖",
     "pricing_type": "free",
     "price": 0,

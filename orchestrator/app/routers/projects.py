@@ -6779,6 +6779,17 @@ async def stop_single_container(
         raise HTTPException(status_code=500, detail=f"Failed to stop container: {str(e)}") from e
 
 
+def _resolve_container_health_route_name(container, deployment_mode: str) -> str:
+    if deployment_mode == "docker":
+        from ..services.project_setup.naming import sanitize_name
+
+        return sanitize_name(container.name)
+
+    from ..services.compute_manager import resolve_k8s_container_dir
+
+    return resolve_k8s_container_dir(container)
+
+
 @router.get("/{project_slug}/containers/{container_id}/health")
 async def check_container_health(
     project_slug: str,
@@ -6808,10 +6819,7 @@ async def check_container_health(
 
     settings = get_settings()
 
-    # Get container directory (sanitized for K8s naming)
-    from ..services.compute_manager import resolve_k8s_container_dir
-
-    container_dir = resolve_k8s_container_dir(container)
+    container_dir = _resolve_container_health_route_name(container, settings.deployment_mode)
 
     # Build container URL based on deployment mode
     if settings.deployment_mode == "desktop":

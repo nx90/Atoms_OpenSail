@@ -12,6 +12,7 @@ import type {
 import type { ChatAgent } from '../types/chat';
 import type { EditMode } from '../components/chat/EditModeStatus';
 import { nodeConfigEvents } from '../utils/nodeConfigEvents';
+import { generateUuid } from '../utils/uuid';
 import type {
   ArchitectureNodeAddedEvent,
   ContainersRestartingEvent,
@@ -379,7 +380,7 @@ export function useAgentChat({
               delete transformedStep.tool_results;
 
               const stepMessage: ChatMessage = {
-                id: `msg-${crypto.randomUUID()}-step-${data.data.iteration}`,
+                id: `msg-${generateUuid()}-step-${data.data.iteration}`,
                 type: 'ai',
                 content: '',
                 agentData: {
@@ -436,7 +437,7 @@ export function useAgentChat({
                 setMessages((prev) => [
                   ...prev,
                   {
-                    id: `wa-${crypto.randomUUID()}`,
+                    id: `wa-${generateUuid()}`,
                     type: 'workspace_attach_request',
                     content: '',
                     workspaceAttachInputId: wa.input_id,
@@ -473,7 +474,7 @@ export function useAgentChat({
                 setMessages((prev) => [
                   ...prev,
                   {
-                    id: `builder-review-${crypto.randomUUID()}`,
+                    id: `builder-review-${generateUuid()}`,
                     type: 'builder_review_request',
                     content: '',
                     approvalId: approvalData.approval_id,
@@ -488,7 +489,7 @@ export function useAgentChat({
                 setMessages((prev) => [
                   ...prev,
                   {
-                    id: `approval-${crypto.randomUUID()}`,
+                    id: `approval-${generateUuid()}`,
                     type: 'approval_request',
                     content: '',
                     approvalId: approvalData.approval_id,
@@ -526,7 +527,7 @@ export function useAgentChat({
                   return [
                     ...prev,
                     {
-                      id: `msg-${crypto.randomUUID()}-result`,
+                      id: `msg-${generateUuid()}-result`,
                       type: 'ai',
                       content: finalContent,
                       agentData: {
@@ -550,7 +551,7 @@ export function useAgentChat({
                 return [
                   ...withoutThinking,
                   {
-                    id: `msg-${crypto.randomUUID()}-error`,
+                    id: `msg-${generateUuid()}-error`,
                     type: 'ai',
                     content: `I encountered an error: ${errorMsg}`,
                     agentData: {
@@ -623,7 +624,7 @@ export function useAgentChat({
       }
 
       const userMessage: ChatMessage = {
-        id: `msg-${crypto.randomUUID()}`,
+        id: `msg-${generateUuid()}`,
         type: 'user',
         content: message,
         attachments,
@@ -635,7 +636,7 @@ export function useAgentChat({
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
-      const thinkingMessageId = `msg-${crypto.randomUUID()}-thinking`;
+      const thinkingMessageId = `msg-${generateUuid()}-thinking`;
       const thinkingMessage: ChatMessage = {
         id: thinkingMessageId,
         type: 'ai',
@@ -791,7 +792,7 @@ export function useAgentChat({
                   return [
                     ...prev,
                     {
-                      id: `msg-${crypto.randomUUID()}-error`,
+                      id: `msg-${generateUuid()}-error`,
                       type: 'ai',
                       content: errorContent,
                       agentData: {
@@ -817,7 +818,7 @@ export function useAgentChat({
                     return [
                       ...prev,
                       {
-                        id: `msg-${crypto.randomUUID()}-result`,
+                        id: `msg-${generateUuid()}-result`,
                         type: 'ai',
                         content: finalContent,
                         agentData: {
@@ -881,7 +882,7 @@ export function useAgentChat({
               const approvalKind = event.data.kind as string | undefined;
               if (approvalKind === 'builder_review') {
                 const reviewMessage: ChatMessage = {
-                  id: `builder-review-${crypto.randomUUID()}`,
+                  id: `builder-review-${generateUuid()}`,
                   type: 'builder_review_request',
                   content: '',
                   approvalId: event.data.approval_id as string,
@@ -896,7 +897,7 @@ export function useAgentChat({
                   .catch((err) => console.error('[APPROVAL] Auto-approve failed:', err));
               } else {
                 const approvalMessage: ChatMessage = {
-                  id: `approval-${crypto.randomUUID()}`,
+                  id: `approval-${generateUuid()}`,
                   type: 'approval_request',
                   content: '',
                   approvalId: event.data.approval_id as string,
@@ -967,7 +968,7 @@ export function useAgentChat({
           return [
             ...withoutThinking,
             {
-              id: `msg-${crypto.randomUUID()}-error`,
+              id: `msg-${generateUuid()}-error`,
               type: 'ai',
               content: `Send failed: ${detail}`,
             },

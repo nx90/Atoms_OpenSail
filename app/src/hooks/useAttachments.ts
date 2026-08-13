@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { ChatAttachment, SerializedAttachment } from '../types/agent';
+import { generateUuid } from '../utils/uuid';
 
 export function useAttachments() {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
@@ -9,7 +10,7 @@ export function useAttachments() {
     const previewUrl = URL.createObjectURL(file);
     objectUrlsRef.current.push(previewUrl);
     const attachment: ChatAttachment = {
-      id: crypto.randomUUID(),
+      id: generateUuid(),
       type: 'image',
       file,
       previewUrl,
@@ -21,7 +22,7 @@ export function useAttachments() {
   const addPastedText = useCallback((text: string) => {
     const lineCount = text.split('\n').length;
     const attachment: ChatAttachment = {
-      id: crypto.randomUUID(),
+      id: generateUuid(),
       type: 'pasted_text',
       text,
       lineCount,
@@ -40,7 +41,7 @@ export function useAttachments() {
         // Don't add duplicate file references
         if (prev.some((a) => a.type === 'file_reference' && a.filePath === filePath)) return prev;
         const attachment: ChatAttachment = {
-          id: crypto.randomUUID(),
+          id: generateUuid(),
           type: 'file_reference',
           filePath,
           fileName,
