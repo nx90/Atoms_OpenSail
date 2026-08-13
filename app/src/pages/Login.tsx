@@ -37,28 +37,11 @@ export default function Login() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Magic-link state.
-  // When the feature flag is on, the landing view is the email-link form
-  // ('magic-email'); users explicitly click "Sign in with password" to
-  // reveal the password form. When the flag is off, we fall back to the
-  // classic password form and hide every magic-link affordance.
-  //
-  // Feature flags load asynchronously (FeatureFlagProvider fires a fetch on
-  // mount). If we only read the flag in the useState initializer, the first
-  // render sees `magicLinkEnabled=false` — before the network completes —
-  // and mode gets locked to 'password' even after the flag resolves to
-  // true. So we default to 'magic-email' optimistically and let the effect
-  // below downgrade to 'password' once the flag has actually loaded. We
-  // only overwrite mode if the user hasn't already made their own choice.
+  // Password login is always the landing view. The feature flag only
+  // controls whether users can opt into the magic-link flow.
   const magicLinkEnabled = useFeatureFlag('magic_link_login');
-  const [mode, setMode] = useState<LoginMode>('magic-email');
+  const [mode, setMode] = useState<LoginMode>('password');
   const [magicEmail, setMagicEmail] = useState('');
-  const userOverrodeModeRef = useRef(false);
-
-  useEffect(() => {
-    if (userOverrodeModeRef.current) return;
-    setMode(magicLinkEnabled ? 'magic-email' : 'password');
-  }, [magicLinkEnabled]);
 
   // Resend cooldown timer
   useEffect(() => {
@@ -250,7 +233,6 @@ export default function Login() {
   // Switch from magic-link form to password form. Carry the typed email
   // forward so the user doesn't re-enter it.
   const handleSwitchToPassword = () => {
-    userOverrodeModeRef.current = true;
     setFormData((prev) => ({ ...prev, email: magicEmail || prev.email }));
     setOtpCode(['', '', '', '', '', '']);
     setResendCooldown(0);
@@ -259,7 +241,6 @@ export default function Login() {
 
   // Switch from password form to magic-link form. Carry the email forward.
   const handleSwitchToMagicEmail = () => {
-    userOverrodeModeRef.current = true;
     setMagicEmail(formData.email || magicEmail);
     setFormData((prev) => ({ ...prev, password: '' }));
     setOtpCode(['', '', '', '', '', '']);
@@ -575,8 +556,7 @@ export default function Login() {
               </div>
             </div>
           ) : (
-            /* Password Login UI — no OAuth here; the magic-email landing
-               view is the front door and offers every sign-in option. */
+            /* Password Login UI */
             <>
               {/* Email + Password Form */}
               <form onSubmit={handleSubmit} className="space-y-4">

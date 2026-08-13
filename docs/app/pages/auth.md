@@ -4,13 +4,14 @@
 
 **File**: `app/src/pages/Login.tsx`
 **Route**: `/login`
-**Layout**: Split-screen (form left, gradient animation right)
+**Layout**: Centered single-column form
 
 ### Purpose
 User authentication via email/password (with optional email 2FA) or OAuth providers.
 
 ### Features
 - **Email/Password Login**: Credentials → direct JWT issuance (default), or email 2FA verification → JWT token (when `TWO_FA_ENABLED=true`)
+- **Magic Link Login**: Optional feature-flagged mode; password login remains the default view
 - **Email 2FA**: 6-digit code sent via email after credential validation (controlled by `TWO_FA_ENABLED` env var)
 - **OAuth Login**: Google, GitHub (bypasses 2FA)
 - **Forgot Password**: Link to `/forgot-password`
